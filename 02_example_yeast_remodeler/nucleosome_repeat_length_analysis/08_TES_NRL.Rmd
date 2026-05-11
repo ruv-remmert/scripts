@@ -1,0 +1,473 @@
+---
+title: "NRL analysis of regularity sorted TTS"
+author: "Uwe Schwartz"
+date: "04/07/2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+work.path<- "/Volumes/PromisePegasus/_Research_/R013_SPT6_yeast_clean//figures/Fig2/"
+knitr::opts_knit$set(root.dir =work.path)
+outDir<-paste0(work.path, "/E_NRL_TTS/")
+dir.create(outDir,recursive = T, showWarnings = F)
+```
+
+
+## Dependencies & Libraries
+
+#### Load packages
+```{r libraries, message=FALSE}
+library(tidyverse)
+library(pheatmap)
+library(ggpubr)
+library(reshape2)
+```
+
+### Load Heatmap value and extract features
+```{r import sorted list for heatmap}
+#heatmap to read
+heatIN<-"A_TES_nuc_profile/values_Heatmap.txt"
+heatmap<-read.delim(heatIN, skip=1, header = F)
+#extract bed input
+geneList<-heatmap[,1:6]
+colnames(geneList)<-c("chr", "start", "end", "name", "nucPositioning","strand")
+
+#remaining data are heatmapValues
+heatmapVal<-heatmap[,-(1:6)]
+
+#split samples
+#get head info
+heatmapHEAD<-read.delim(heatIN, nrows=1, header = F)
+
+#extract info from head
+features<-heatmapHEAD %>% str_split("],")
+
+#split gene list 
+gene.groups<-grep("group_labels",features[[1]], value = T) %>% 
+     str_split_i("\\:\\[",2) %>% str_split(",") %>% unlist() %>% 
+    str_split_i("regSorted_",2) %>% str_split_i("\\.",1)
+
+
+group.idx<-grep("group_boundaries",features[[1]], value = T)%>% 
+     str_split_i("\\:\\[",2) %>% str_split(",") %>% unlist() %>% 
+     as.numeric()  
+
+gene.group.list<-list()
+for(i in 1:length(gene.groups)){
+  gene.group.list[[gene.groups[i]]]<-(group.idx[i]+1):(group.idx[i+1])
+}
+
+geneList.list<-lapply(gene.group.list,function(x) geneList[x,])
+
+
+#get positions
+binSize<-grep("bin size",features[[1]], value = T) %>% str_split(",") %>% 
+    unlist() %>%  first() %>% str_split_i("\\:\\[",2) %>% as.numeric() 
+upstream<-grep("upstream",features[[1]], value = T) %>% str_split(",") %>% 
+    unlist() %>%  first() %>% str_split_i("\\:\\[",2) %>% as.numeric() 
+downstream<-grep("downstream",features[[1]], value = T) %>% str_split(",") %>% 
+    unlist() %>%  first() %>% str_split_i("\\:\\[",2) %>% as.numeric() 
+
+ncol_sample<-(upstream+downstream)/binSize
+pos<-seq(c(-1)*(upstream-binSize/2),downstream-binSize/2,binSize)
+
+
+samples<-grep("sample_labels",features[[1]], value = T) %>% 
+     str_split_i("\\:\\[",2) %>% str_split(",") %>% unlist() 
+
+
+
+##gene quartiles
+geneList.qr<-lapply(geneList.list, 
+  function(x) {
+    qr<-quantile(x$nucPositioning)
+    x$regularity<-"regularity_Q1"
+    x$regularity[x$nucPositioning>qr["25%"]]<-"regularity_Q2"
+    x$regularity[x$nucPositioning>qr["50%"]]<-"regularity_Q3"
+    x$regularity[x$nucPositioning>qr["75%"]]<-"regularity_Q4"
+    return(x)})
+
+#merge data sets
+df.plot<-rbind(geneList.qr[[1]],geneList.qr[[2]],geneList.qr[[3]])
+df.plot$name<-factor(df.plot$name, levels=rev(df.plot$name))
+
+
+```
+
+
+```{r helper functions}
+
+getHeatSamp<-function(name,ncol_sample=ncol_sample) {
+    idx<-which(samples==name)
+    idxHeat<-seq(((idx-1)*ncol_sample+1),idx*ncol_sample)
+    heat<-heatmapVal[,idxHeat]
+    colnames(heat)<-pos
+    rownames(heat)<-geneList$name
+    return(heat)
+}
+
+getAverageProfileSample<-function(heat.mx, heat.name){
+  df.heat<-melt(as.matrix(heat.mx), value.name = "nucOccupancy",
+     varnames = c("genes", "position"))
+  ## add gene orientation convergent or tandem
+  df.complete<-df.heat %>% 
+    mutate(geneOrientation = case_when(
+      genes %in% geneList.list$convergent$name ~ "convergent",
+      genes %in% geneList.list$lonely$name ~ "lonely",
+      genes %in% geneList.list$tandem$name  ~ "tandem",
+      TRUE ~ NA_character_  # For genes not found in either list
+    )) %>%
+    left_join(df.plot %>% select(name,regularity),
+              by = join_by(genes==name))
+  
+  ## get mean at each position
+  df.summary <- df.complete %>%
+    group_by(position, geneOrientation, regularity) %>%
+    summarise(mean_nucOccupancy = mean(nucOccupancy, na.rm = TRUE), 
+              .groups = "drop") %>% 
+    mutate(sample=heat.name)
+  return(df.summary)
+}
+
+#palette
+MetBrewer::MetPalettes$Tam
+Tam<-c("#ffb242","#de4f33","#9f2d55","#341648")
+
+
+
+#get nrl
+  
+
+
+get.lm<-function(df){
+    x <- df$position
+    y <- df$mean_nucOccupancy_rep
+    #get loess function
+    lm<-loess(y~x,span=0.1)
+    loess.line<-predict(lm)
+    #get maximas
+    maxima<-x[which(diff(sign(diff(loess.line)))==-2)+1]
+    #get T-1 nucleosome
+    n.max<-which.min(abs(maxima))
+    
+    df.out<-data.frame(maxima=maxima[1:n.max],
+                       peaks=(-n.max):(-1),
+                       sample=df$sample[1])
+    return(df.out)
+}
+
+
+get.slope<-function(df){
+    fit<-lm(maxima~peaks, data=df)
+    r2<-summary(fit)$r.squared
+    nrl<-fit$coefficients[2]
+    return(data.frame(r2=r2,nrl=nrl, sample=df$sample[1]))
+}
+
+```
+
+
+
+```{r get profiles}
+#get heatmaps for each sample
+heat.wt.r1<-getHeatSamp(name="WT_Rep1",ncol_sample=ncol_sample)
+heat.wt.r2<-getHeatSamp(name="WT_Rep2",ncol_sample=ncol_sample)
+heat.wt.r3<-getHeatSamp(name="WT_Rep3",ncol_sample=ncol_sample)
+
+#get average profile
+df.plot.wt1<-getAverageProfileSample(heat.mx = heat.wt.r1, heat.name = "wt.r1")
+df.plot.wt2<-getAverageProfileSample(heat.mx = heat.wt.r2, heat.name = "wt.r2")
+df.plot.wt3<-getAverageProfileSample(heat.mx = heat.wt.r3, heat.name = "wt.r3")
+
+# merge the replicates
+df.merge<-rbind(df.plot.wt1,df.plot.wt2,df.plot.wt3)
+
+df_summary_plot <- df.merge %>% 
+  group_by(position, geneOrientation, regularity) %>% 
+  summarise(mean_nucOccupancy_rep = mean(mean_nucOccupancy, na.rm = TRUE),
+            se_nucOccupancy_max=mean_se(mean_nucOccupancy)$ymax,
+            se_nucOccupancy_min=mean_se(mean_nucOccupancy)$ymin,
+              .groups = "drop")%>% 
+  mutate(sample="wt")
+
+
+
+df_group <- df_summary_plot %>% 
+  group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.lm(.x)) %>% 
+    filter(peaks > (-5))
+
+
+######## plot
+
+ggProfile<-ggplot(df_group, 
+                  aes(x=peaks,y=maxima, color=regularity)) +
+  geom_smooth(method = "lm", se = FALSE, linewidth=0.6)+
+    geom_point()+
+  scale_color_manual(values=Tam)+
+  facet_grid(geneOrientation ~ .) + theme_bw()+
+  ylab("distance to T-1 nucleosme") +
+  xlab("peaks")
+
+  ggProfile
+
+  
+pdf(paste0(outDir,"/NRL_WT.pdf"), width=4, height = 3)
+
+  print(ggProfile)
+
+dev.off()  
+ 
+  
+## get NRL
+    
+nrl.table.wt<-df_group %>% 
+    group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.slope(.x)) 
+
+
+write_delim(nrl.table.wt, file = paste0(outDir,"/NRL_WT.txt"))
+
+
+```
+
+```{r nrl Spn1_R263D}
+#get heatmaps for each sample
+heat.R263D.r1<-getHeatSamp(name="Spn1_R263D_Rep1",ncol_sample=ncol_sample)
+heat.R263D.r2<-getHeatSamp(name="Spn1_R263D_Rep2",ncol_sample=ncol_sample)
+heat.R263D.r3<-getHeatSamp(name="Spn1_R263D_Rep3",ncol_sample=ncol_sample)
+
+df.plot.R263D1<-getAverageProfileSample(heat.mx = heat.R263D.r1, heat.name = "R263D.r1")
+df.plot.R263D2<-getAverageProfileSample(heat.mx = heat.R263D.r2, heat.name = "R263D.r2")
+df.plot.R263D3<-getAverageProfileSample(heat.mx = heat.R263D.r3, heat.name = "R263D.r3")
+
+
+# merge the replicates
+df.merge<-rbind(df.plot.R263D1,df.plot.R263D2,df.plot.R263D3)
+
+df_summary_plot_spn1.R263D <- df.merge %>% 
+  group_by(position, geneOrientation, regularity) %>% 
+  summarise(mean_nucOccupancy_rep = mean(mean_nucOccupancy, na.rm = TRUE),
+            se_nucOccupancy_max=mean_se(mean_nucOccupancy)$ymax,
+            se_nucOccupancy_min=mean_se(mean_nucOccupancy)$ymin,
+              .groups = "drop")%>% 
+  mutate(sample="spn1.R263D")
+
+
+df_group <- df_summary_plot_spn1.R263D %>% 
+  group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.lm(.x)) %>% 
+    filter(peaks > (-5))
+
+
+######## plot
+
+ggProfile<-ggplot(df_group, 
+                  aes(x=peaks,y=maxima, color=regularity)) +
+  geom_smooth(method = "lm", se = FALSE, linewidth=0.6)+
+    geom_point()+
+  scale_color_manual(values=Tam)+
+  facet_grid(geneOrientation ~ .) + theme_bw()+
+  ylab("distance to T-1 nucleosme") +
+  xlab("peaks")
+
+  ggProfile
+
+  
+pdf(paste0(outDir,"/NRL_spn1.R263D.pdf"), width=4, height = 3)
+
+  print(ggProfile)
+
+dev.off()  
+ 
+  
+## get NRL
+    
+nrl.table.spn1.R263D<-df_group %>% 
+    group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.slope(.x)) 
+
+
+write_delim(nrl.table.spn1.R263D, file = paste0(outDir,"/NRL_spn1.R263D.txt"))
+
+
+
+```
+
+
+
+
+```{r nrl Spn1_F267E}
+#get heatmaps for each sample
+heat.F267E.r1<-getHeatSamp(name="Spn1_F267E_Rep1",ncol_sample=ncol_sample)
+heat.F267E.r2<-getHeatSamp(name="Spn1_F267E_Rep2",ncol_sample=ncol_sample)
+heat.F267E.r3<-getHeatSamp(name="Spn1_F267E_Rep3",ncol_sample=ncol_sample)
+
+
+df.plot.F267E1<-getAverageProfileSample(heat.mx = heat.F267E.r1, heat.name = "F267E.r1")
+df.plot.F267E2<-getAverageProfileSample(heat.mx = heat.F267E.r2, heat.name = "F267E.r2")
+df.plot.F267E3<-getAverageProfileSample(heat.mx = heat.F267E.r3, heat.name = "F267E.r3")
+
+
+# merge the replicates
+df.merge<-rbind(df.plot.F267E1,df.plot.F267E2,df.plot.F267E3)
+
+df_summary_plot_spn1.F267E <- df.merge %>% 
+  group_by(position, geneOrientation, regularity) %>% 
+  summarise(mean_nucOccupancy_rep = mean(mean_nucOccupancy, na.rm = TRUE),
+            se_nucOccupancy_max=mean_se(mean_nucOccupancy)$ymax,
+            se_nucOccupancy_min=mean_se(mean_nucOccupancy)$ymin,
+              .groups = "drop")%>% 
+  mutate(sample="spn1.F267E")
+
+
+df_group <- df_summary_plot_spn1.F267E %>% 
+  group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.lm(.x)) %>% 
+    filter(peaks > (-5))
+
+
+######## plot
+
+ggProfile<-ggplot(df_group, 
+                  aes(x=peaks,y=maxima, color=regularity)) +
+  geom_smooth(method = "lm", se = FALSE, linewidth=0.6)+
+    geom_point()+
+  scale_color_manual(values=Tam)+
+  facet_grid(geneOrientation ~ .) + theme_bw()+
+  ylab("distance to T-1 nucleosme") +
+  xlab("peaks")
+
+  ggProfile
+
+  
+pdf(paste0(outDir,"/NRL_spn1.F267E.pdf"), width=4, height = 3)
+
+  print(ggProfile)
+
+dev.off()  
+ 
+  
+## get NRL
+    
+nrl.table.spn1.F267E<-df_group %>% 
+    group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.slope(.x)) 
+
+
+write_delim(nrl.table.spn1.F267E, file = paste0(outDir,"/NRL_spn1.F267E.txt"))
+
+
+
+
+```
+
+```{r nrl Spt6_F249K}
+#get heatmaps for each sample
+heat.F249K.r1<-getHeatSamp(name="Spt6_F249K_Rep1",ncol_sample=ncol_sample)
+heat.F249K.r2<-getHeatSamp(name="Spt6_F249K_Rep2",ncol_sample=ncol_sample)
+heat.F249K.r3<-getHeatSamp(name="Spt6_F249K_Rep3",ncol_sample=ncol_sample)
+
+df.plot.F249K1<-getAverageProfileSample(heat.mx = heat.F249K.r1, heat.name = "F249K.r1")
+df.plot.F249K2<-getAverageProfileSample(heat.mx = heat.F249K.r2, heat.name = "F249K.r2")
+df.plot.F249K3<-getAverageProfileSample(heat.mx = heat.F249K.r3, heat.name = "F249K.r3")
+
+
+# merge the replicates
+df.merge<-rbind(df.plot.F249K1,df.plot.F249K2,df.plot.F249K3)
+
+df_summary_plot_spt6.F249K <- df.merge %>% 
+  group_by(position, geneOrientation, regularity) %>% 
+  summarise(mean_nucOccupancy_rep = mean(mean_nucOccupancy, na.rm = TRUE),
+            se_nucOccupancy_max=mean_se(mean_nucOccupancy)$ymax,
+            se_nucOccupancy_min=mean_se(mean_nucOccupancy)$ymin,
+              .groups = "drop") %>% 
+  mutate(sample="spt6.F249K")
+
+
+df_group <- df_summary_plot_spt6.F249K %>% 
+  group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.lm(.x)) %>% 
+    filter(peaks > (-5))
+
+
+######## plot
+
+ggProfile<-ggplot(df_group, 
+                  aes(x=peaks,y=maxima, color=regularity)) +
+  geom_smooth(method = "lm", se = FALSE, linewidth=0.6)+
+    geom_point()+
+  scale_color_manual(values=Tam)+
+  facet_grid(geneOrientation ~ .) + theme_bw()+
+  ylab("distance to T-1 nucleosme") +
+  xlab("peaks")
+
+  ggProfile
+
+  
+pdf(paste0(outDir,"/NRL_spt6.F249K.pdf"), width=4, height = 3)
+
+  print(ggProfile)
+
+dev.off()  
+ 
+  
+## get NRL
+    
+nrl.table.spt6.F249K<-df_group %>% 
+    group_by( geneOrientation, regularity) %>% 
+    group_modify(~ get.slope(.x)) 
+
+
+write_delim(nrl.table.spt6.F249K, file = paste0(outDir,"/NRL_spt6.F249K.txt"))
+
+
+
+
+
+```
+
+```{r NRL summary plot}
+nrl.plot.pre<-rbind(nrl.table.wt, nrl.table.spn1.F267E, nrl.table.spn1.R263D, nrl.table.spt6.F249K)
+
+nrl.plot<-nrl.plot.pre %>% 
+    filter(nrl >= 150) %>% 
+    filter(r2>0.99)
+
+nrl.plot$regularity<-nrl.plot$regularity %>% 
+    str_remove("regularity_") %>% as.factor()
+
+nrl.plot$sample<-factor(nrl.plot$sample, 
+                        levels=c("wt","spt6.F249K","spn1.R263D","spn1.F267E"))
+
+
+
+
+gg.nrl<-ggplot(nrl.plot, aes(x=regularity, y=nrl,color=sample, group=sample)) + 
+    geom_line(aes(linetype = sample))+
+    geom_point() + 
+    scale_color_manual(values=c("#404040",  "#A82649","#8C5920","#E59B41"))+
+    scale_linetype_manual(values=c("solid", "dotted","dashed", "twodash"))+
+    theme_bw()+
+    facet_grid( . ~ geneOrientation)+
+    ylim(150,180)
+
+
+pdf(paste0(outDir,"/NRL_summary.pdf"), width=5, height = 3)
+
+  print(gg.nrl)
+
+dev.off()  
+
+```
+
+
+
+##Session info
+```{r info}
+sessionInfo()
+
+
+```

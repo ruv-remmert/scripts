@@ -1,0 +1,13 @@
+geneOrientation regularity r2 nrl sample
+convergent regularity_Q1 0.9799602736702715 148.99999999999997 isw1.isw2.chd1
+convergent regularity_Q2 0.9949238578680203 140 isw1.isw2.chd1
+convergent regularity_Q3 0.9998356614626129 155.99999999999997 isw1.isw2.chd1
+convergent regularity_Q4 0.9998513011152417 164 isw1.isw2.chd1
+lonely regularity_Q1 0.9266856214459788 195 isw1.isw2.chd1
+lonely regularity_Q2 0.9823182711198428 100 isw1.isw2.chd1
+lonely regularity_Q3 0.9974499089253187 147.99999999999997 isw1.isw2.chd1
+lonely regularity_Q4 0.9994334277620397 167.99999999999997 isw1.isw2.chd1
+tandem regularity_Q1 0.9966869133075649 190 isw1.isw2.chd1
+tandem regularity_Q2 0.9995728451563692 180.99999999999997 isw1.isw2.chd1
+tandem regularity_Q3 0.9998513011152417 164 isw1.isw2.chd1
+tandem regularity_Q4 0.9998678996036988 174 isw1.isw2.chd1
