@@ -31,7 +31,7 @@ mat <- read.table(
   fill = TRUE
 )
 
-gtf_file <- "/media/linuxmac/Storage2/scripts/08_tko_polII/data/genes_sacCer3.gtf"
+gtf_file <- "/media/linuxmac/Storage2/scripts/08_TKO_POLII_INO80_Singh_et_al/data/genes_sacCer3.gtf"
 gtf_genes <- read.table(
   gtf_file, sep = "\t", header = FALSE, comment.char = "#",
   stringsAsFactors = FALSE, quote = ""
@@ -67,8 +67,8 @@ for (i in seq_len(length(sample_labels))) {
   col_end   <- sample_boundaries[i + 1]
   samp_mat <- signal[, col_start:col_end, drop = FALSE]
   vals <- colMeans(samp_mat, na.rm = TRUE)
-  baseline <- mean(vals[baseline_bins], na.rm = TRUE)
-  avg_profiles[[names.pre[i]]] <- vals / baseline
+  # baseline <- mean(vals[baseline_bins], na.rm = TRUE)
+  avg_profiles[[names.pre[i]]] <- vals # / baseline
 }
 
 start.plot <- -750
