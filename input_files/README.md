@@ -8,7 +8,9 @@ in this repo are reproducible by pointing them at this folder.
 
 ## Runnable copies of the scripts
 
-Each of the 7 scripts (9 files, since 2 are `.sh`+`.R` pairs) has a copy sitting
+Each of the 7 originally-requested scripts (9 files, since 2 are `.sh`+`.R` pairs),
+plus the 08 `plus1_nucleosome/make_special_comparison_plots.R` that generates the
+cross-dataset `.tab` used by the 09 plus1_nucleosome script, has a copy sitting
 next to its inputs in this folder. The copies are byte-identical to the
 originals elsewhere in the repo **except** for a handful of path fixes needed
 because the originals either hardcode a stale path (from before a folder
@@ -30,6 +32,11 @@ Rscript make_heatmap_TSS_red_blue.R
 # 08 TES special comparison (parent, all genes)
 cd 08_TKO_POLII_INO80_Singh_et_al/additional_analysis/TES
 Rscript make_special_comparison_plots.R TES_out_profile.tab special_comparison_plots/
+
+# 08 plus1_nucleosome special comparison (parent, all genes; also the source of the
+# 09 plus1_nucleosome script's optional cross-dataset arg)
+cd 08_TKO_POLII_INO80_Singh_et_al/additional_analysis/plus1_nucleosome
+Rscript make_special_comparison_plots.R plus1_out_profile.tab special_comparison_plots/
 
 # 08 TES only_genes_over_1kbp (convergent / tandem)
 cd 08_TKO_POLII_INO80_Singh_et_al/additional_analysis/TES/only_genes_over_1kbp/convergent
@@ -57,7 +64,7 @@ Rscript make_special_comparison_plots.R TES_out_profile.tab special_comparison_p
 | `heatmap/heatmap_TSS/01_TSS_nuc_regSorted_orientation.sh` | `Anno=...`, `bwChen=...` | Same stale-path issue, plus `Anno` pointed at the old absolute location of this same folder. Changed `Anno` to `$AnalysisDir` (matching the sibling TES script's style) and `bwChen` the same way as above. |
 | `TES/only_genes_over_1kbp/{convergent,tandem}/make_special_comparison_plots.R` | `gtf_file <- ...` | Was hardcoded to the absolute path `/media/linuxmac/Storage2/scripts/08_TKO_POLII_INO80_Singh_et_al/data/genes_sacCer3.gtf` — correct on the original machine, but not portable to a GitHub clone elsewhere. Changed to a relative path pointing at the `genes_sacCer3.gtf` copy in this folder. |
 
-All other scripts (`make_heatmap_red_blue.R`, `make_heatmap_TSS_red_blue.R`, the parent `TES/make_special_comparison_plots.R`, and both 09 `make_special_comparison_plots.R` scripts) take their inputs purely as relative paths or command-line arguments already, so they needed no changes — just correct invocation, shown above.
+All other scripts (`make_heatmap_red_blue.R`, `make_heatmap_TSS_red_blue.R`, the parent `TES/make_special_comparison_plots.R`, the parent `plus1_nucleosome/make_special_comparison_plots.R`, and both 09 `make_special_comparison_plots.R` scripts) take their inputs purely as relative paths or command-line arguments already, so they needed no changes — just correct invocation, shown above.
 
 ## heatmap/new_heatmap_TES
 `08_TKO_POLII_INO80_Singh_et_al/additional_analysis/heatmap/new_heatmap_TES/01_TES_nuc_regSorted_orientation.sh` + `make_heatmap_red_blue.R`
@@ -92,7 +99,8 @@ Orientation filter BED for the respective script above (read via a bare relative
 Gene-length filter (>1000bp) used by both `only_genes_over_1kbp/convergent` and `.../tandem` scripts above. The original scripts hardcode an absolute path to this file; the copies in this folder (see "Runnable copies" above) use a relative path instead so they work from a GitHub clone at any location.
 
 ## additional_analysis/plus1_nucleosome/plus1_out_profile.tab (08)
-Cross-dataset file (`args[3]`) for `09_TKO_INO80_WT_Singh_et_al/additional_analysis/plus1_nucleosome/make_special_comparison_plots.R` — supplies the `TKO_Rpb1_Ino80_Rapamycin_120_min_Rep_1` condition for its optional Plot 3. Generated the same way as the 08 TES `.tab` above, from the same 08 bigwigs, but with `--referencePoint TSS`.
+Input (`args[1]`) to `08_TKO_POLII_INO80_Singh_et_al/additional_analysis/plus1_nucleosome/make_special_comparison_plots.R` (its own copy is in this same folder — analogous to the 08 TES script/tab pair above). Generated the same way as the 08 TES `.tab`, from the same 08 bigwigs, but with `--referencePoint TSS`.
+Also reused as the cross-dataset file (`args[3]`) by `09_TKO_INO80_WT_Singh_et_al/additional_analysis/plus1_nucleosome/make_special_comparison_plots.R` — supplies the `TKO_Rpb1_Ino80_Rapamycin_120_min_Rep_1` condition for its optional Plot 3.
 
 ## 09_TKO_INO80_WT_Singh_et_al/additional_analysis/plus1_nucleosome/TSS_out_profile.tab
 ## 09_TKO_INO80_WT_Singh_et_al/additional_analysis/TES/TES_out_profile.tab
